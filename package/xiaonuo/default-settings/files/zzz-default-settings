@@ -1,0 +1,456 @@
+#!/bin/sh
+
+# 修改root密码
+password=$(openssl passwd -1 'admin')
+sed -i "s|root::0:0:99999:7:::|root:$password:0:0:99999:7:::|g" /etc/shadow
+
+# luci语言设置
+uci set luci.main.mediaurlbase='/luci-static/argon'
+uci set luci.themes.Bootstrap='/luci-static/argon'
+uci set luci.main.lang='zh_cn'
+uci set luci.diag.dns='www.danxiaonuo.me'
+uci set luci.diag.ping='www.danxiaonuo.me'
+uci set luci.diag.route='www.danxiaonuo.me'
+uci commit luci
+
+# 系统时区设置
+uci set system.@system[0].hostname='Uola'
+uci set system.@system[0].timezone='CST-8'
+uci set system.@system[0].zonename='Asia/Shanghai'
+
+# 系统时间同步
+uci -q delete system.ntp.server > /dev/null 2>&1
+uci add_list system.ntp.server='ntp.aliyun.com' 
+uci add_list system.ntp.server='ntp1.aliyun.com' 
+uci add_list system.ntp.server='ntp2.aliyun.com' 
+uci add_list system.ntp.server='ntp4.aliyun.com'
+uci add_list system.ntp.server='ntp5.aliyun.com'
+uci add_list system.ntp.server='ntp6.aliyun.com'
+uci add_list system.ntp.server='ntp7.aliyun.com'
+uci set system.ntp.enable_server='1'
+uci commit system
+
+# LAN口设置
+# IPV6前缀设置
+uci set network.globals.ula_prefix='da66::/48' > /dev/null 2>&1
+# 删除数据包引导
+uci -q delete network.globals.packet_steering > /dev/null 2>&1
+# IPV4静态地址设置
+uci set network.lan.ipaddr='10.8.1.1'
+# IPV4子网掩码
+uci set network.lan.netmask='255.255.255.0'
+# IPV6子网掩码
+uci set network.lan.ip6assign='64'
+# IPV6提示内容
+uci set network.lan.ip6hint='0'
+# IPV6后缀地址
+uci set network.lan.ip6ifaceid='::1'
+# WAN口请求DHCP时要发送的主机名
+uci set network.wan.hostname='danxiaonuo'
+# 使用自定义的 DNS 服务器
+uci -q delete network.lan.dns
+uci set network.lan.dns='10.8.1.1 da66::1'
+uci commit network
+
+# LAN DHCP服务设置
+
+# 启用客户端
+uci set dhcp.lan.start='0'
+# 客户数
+uci set dhcp.lan.limit='255'
+# 租期
+uci set dhcp.lan.leasetime='12h'
+
+# DHCP 选项
+# 强制使用DHCP
+uci set dhcp.lan.force=1
+# 动态 DHCP
+uci set dhcp.lan.dynamicdhcp=1
+# IPV4默认网关
+uci add_list dhcp.lan.dhcp_option='3,10.8.1.1'
+# IPV4 DNS服务器
+uci add_list dhcp.lan.dhcp_option='6,10.8.1.1'
+
+# 混合模式IPV6 配置
+# 路由通告服务
+uci set dhcp.lan.ra='hybrid'
+# DHCPv6 服务
+uci set dhcp.lan.dhcpv6='hybrid'
+# NDP 代理
+uci set dhcp.lan.ndp='hybrid'
+# 使用内置的 IPv6 管理
+uci set dhcp.lan.ra_management='1'
+# 删除总是通告默认路由
+uci -q delete dhcp.lan.ra_default > /dev/null 2>&1
+# 删除LAN设置为 dhcpv6 中继的主接口
+uci -q delete dhcp.lan.master > /dev/null 2>&1
+# 通告的 IPV6 DNS 服务器
+uci -q delete dhcp.lan.dns > /dev/null 2>&1
+uci set dhcp.lan.dns='da66::1'
+#uci add_list dhcp.lan.dns='2400:3200::1'
+#uci add_list dhcp.lan.dns='240C::6666'
+
+# 设置 DHCP WAN6
+uci set dhcp.wan6=dhcp
+uci set dhcp.wan6.interface='wan'
+uci set dhcp.wan6.dhcpv6='hybrid'
+uci set dhcp.wan6.ra='hybrid'
+uci set dhcp.wan6.ndp='hybrid'
+uci set dhcp.wan6.master='1'
+
+# dnsmasq设置
+# 仅本地服务
+uci -q delete dhcp.@dnsmasq[0].localservice
+# 非全部地址
+uci -q delete dhcp.@dnsmasq[0].nonwildcard
+# 删除DNS 转发
+uci -q delete dhcp.@dnsmasq[0].server
+# 禁止解析 IPv6 DNS 记录
+uci -q delete dhcp.@dnsmasq[0].filter_aaaa
+# 删除解析文件
+uci -q delete dhcp.@dnsmasq[0].resolvfile
+# 忽略解析文件
+uci set dhcp.@dnsmasq[0].noresolv=1 > /dev/null 2>&1
+# 过滤本地包
+uci set dhcp.@dnsmasq[0].boguspriv=0
+# 过滤无用包
+uci set dhcp.@dnsmasq[0].filterwin2k=1
+# 本地化查询
+uci set dhcp.@dnsmasq[0].localise_queries=1
+# DNS 查询缓存的大小
+uci set dhcp.@dnsmasq[0].cachesize=0
+# 重定向客户端DNS到dnsmasq
+uci set dhcp.@dnsmasq[0].dns_redirect=0
+# 使用 all-servers 并发查询
+uci set dhcp.@dnsmasq[0].allservers=1
+# 禁用无效信息缓存
+uci set dhcp.@dnsmasq[0].nonegcache=1
+# 最大并发查询数
+uci set dhcp.@dnsmasq[0].dnsforwardmax=10000 > /dev/null 2>&1
+uci commit dhcp
+
+# firewall设置
+uci set firewall.@defaults[0]=defaults
+# 启用 SYN-flood 防御
+uci set firewall.@defaults[0].syn_flood='1'
+# 入站数据
+uci set firewall.@defaults[0].input='ACCEPT'
+# 出站数据
+uci set firewall.@defaults[0].output='ACCEPT'
+# 启用FullCone-NAT
+uci set firewall.@defaults[0].fullcone='0'
+uci set firewall.@defaults[0].flow_offloading='0'
+uci set firewall.@defaults[0].flow_offloading_hw='0'
+# 丢弃无效数据包
+uci set firewall.@defaults[0].drop_invalid='0'
+# 转发
+uci set firewall.@defaults[0].forward='ACCEPT'
+uci set firewall.@zone[0]=zone
+uci set firewall.@zone[0].name='lan'
+uci set firewall.@zone[0].input='ACCEPT'
+uci set firewall.@zone[0].output='ACCEPT'
+uci set firewall.@zone[0].forward='ACCEPT'
+uci set firewall.@zone[0].network='lan'
+# IP 动态伪装 LAN口
+uci set firewall.@zone[0].masq='0'
+# MSS 钳制 LAN口
+uci set firewall.@zone[0].mtu_fix='0'
+uci set firewall.@zone[1]=zone
+uci set firewall.@zone[1].name='wan'
+uci set firewall.@zone[1].input='REJECT'
+uci set firewall.@zone[1].output='ACCEPT'
+uci set firewall.@zone[1].forward='REJECT'
+# IP 动态伪装 WAN口
+uci set firewall.@zone[1].masq='1'
+# MSS 钳制 WAN口
+uci set firewall.@zone[1].mtu_fix='0'
+# wan接口 wan6接口允许访问
+uci set firewall.@zone[1].network='wan wan6'
+uci set firewall.@forwarding[0]=forwarding
+uci set firewall.@forwarding[0].src='lan'
+uci set firewall.@forwarding[0].dest='wan'
+uci commit firewall
+
+# Turbo ACC 网络加速设置
+# 软件流量分载
+uci set turboacc.config.sw_flow='0'
+# 硬件流量分载
+uci set turboacc.config.hw_flow='0'
+# SFE流量分载
+uci set turboacc.config.sfe_flow='0'
+# BBR 拥塞控制算法
+uci set turboacc.config.bbr_cca='0'
+# 全锥型 NAT
+uci set turboacc.config.fullcone_nat='0'
+# 加速ipv6
+uci -q delete turboacc.config.sfe_ipv6
+# 禁用dns缓存
+uci set turboacc.config.dns_caching='0'
+uci commit turboacc
+
+# 默认开启网络加速
+uci set flowoffload.@flow[0]=flow
+uci set flowoffload.@flow[0].flow_offloading='0'
+uci set flowoffload.@flow[0].dns='0'
+uci set flowoffload.@flow[0].bbr='1'
+uci set flowoffload.@flow[0].flow_offloading_hw='0'
+uci -q flowoffload.@flow[0].dns_server
+uci commit flowoffload
+
+
+# fstab设置
+uci set fstab.@global[0].anon_mount=1
+uci commit fstab
+
+# samba设置
+uci set samba.@samba[0].name='danxiaonuo'
+uci set samba.@samba[0].description='danxiaonuo'
+uci commit samba
+
+# mwan3设置
+# 删除mwan3接口
+uci -q delete mwan3.wan > /dev/null 2>&1
+uci -q delete mwan3.wan6 > /dev/null 2>&1
+uci -q delete mwan3.wanb > /dev/null 2>&1
+uci -q delete mwan3.wanb6 > /dev/null 2>&1
+# 删除mwan3成员
+uci -q delete mwan3.wanb_m1_w2 > /dev/null 2>&1
+uci -q delete mwan3.wanb_m2_w2 > /dev/null 2>&1
+uci -q delete mwan3.wanb6_m1_w2 > /dev/null 2>&1
+uci -q delete mwan3.wanb6_m2_w2 > /dev/null 2>&1
+uci -q delete mwan3.wan_m1_w3 > /dev/null 2>&1
+uci -q delete mwan3.wan_m2_w3 > /dev/null 2>&1
+uci -q delete mwan3.wan6_m1_w3 > /dev/null 2>&1
+uci -q delete mwan3.wan6_m2_w3 > /dev/null 2>&1
+# 删除mwan3策略
+uci -q delete mwan3.wan_only > /dev/null 2>&1
+uci -q delete mwan3.wanb_only > /dev/null 2>&1
+uci -q delete mwan3.balanced > /dev/null 2>&1
+uci -q delete mwan3.wan_wanb > /dev/null 2>&1
+uci -q delete mwan3.wanb_wan > /dev/null 2>&1
+# 删除mwan3策略
+uci -q delete mwan3.https > /dev/null 2>&1
+uci -q delete mwan3.default_rule_v4 > /dev/null 2>&1
+uci -q delete mwan3.default_rule_v6 > /dev/null 2>&1
+
+# 新增mwan3接口wan
+uci set mwan3.wan=interface
+uci set mwan3.wan.enabled='1'
+uci set mwan3.wan.initial_state='online'
+uci set mwan3.wan.family='ipv4'
+uci add_list mwan3.wan.track_ip='223.5.5.5'
+uci set mwan3.wan.track_method='ping'
+uci set mwan3.wan.reliability='1'
+uci set mwan3.wan.max_ttl='60'
+uci set mwan3.wan.down='3'
+uci set mwan3.wan.up='3'
+uci add_list mwan3.wan.flush_conntrack='ifup'
+uci add_list mwan3.wan.flush_conntrack='connected'
+uci set mwan3.wan.count='3'
+uci set mwan3.wan.timeout='10'
+uci set mwan3.wan.interval='10'
+uci set mwan3.wan.failure_interval='10'
+uci set mwan3.wan.recovery_interval='10'
+uci set mwan3.wan.check_quality='0'
+uci set mwan3.wan.keep_failure_interval='1'
+uci set mwan3.wan.size='120'
+# 新增mwan3接口wan6
+uci set mwan3.wan6=interface
+uci set mwan3.wan6.enabled='1'
+uci set mwan3.wan6.initial_state='online'
+uci set mwan3.wan6.family='ipv6'
+uci add_list mwan3.wan6.track_ip='2400:3200::1'
+uci set mwan3.wan6.track_method='ping'
+uci set mwan3.wan6.reliability='1'
+uci set mwan3.wan6.max_ttl='60'
+uci set mwan3.wan6.keep_failure_interval='1'
+uci set mwan3.wan6.down='3'
+uci set mwan3.wan6.up='3'
+uci add_list mwan3.wan6.flush_conntrack='ifup'
+uci add_list mwan3.wan6.flush_conntrack='connected'
+uci set mwan3.wan6.count='3'
+uci set mwan3.wan6.timeout='10'
+uci set mwan3.wan6.interval='10'
+uci set mwan3.wan6.failure_interval='10'
+uci set mwan3.wan6.recovery_interval='10'
+uci set mwan3.wan6.size='120'
+uci set mwan3.wan6.check_quality='0'
+# 新增mwan3成员
+uci set mwan3.wan_m1_w3=member
+uci set mwan3.wan_m1_w3.interface='wan'
+uci set mwan3.wan_m1_w3.metric='1'
+uci set mwan3.wan_m1_w3.weight='3'
+uci set mwan3.wan_m2_w3=member
+uci set mwan3.wan_m2_w3.interface='wan'
+uci set mwan3.wan_m2_w3.metric='2'
+uci set mwan3.wan_m2_w3.weight='3'
+uci set mwan3.wan6_m1_w3=member
+uci set mwan3.wan6_m1_w3.interface='wan6'
+uci set mwan3.wan6_m1_w3.metric='1'
+uci set mwan3.wan6_m1_w3.weight='3'
+uci set mwan3.wan6_m2_w3=member
+uci set mwan3.wan6_m2_w3.interface='wan6'
+uci set mwan3.wan6_m2_w3.metric='2'
+uci set mwan3.wan6_m2_w3.weight='3'
+# 新增mwan3策略
+uci set mwan3.balanced=policy
+uci add_list mwan3.balanced.use_member='wan_m1_w3'
+uci add_list mwan3.balanced.use_member='wan_m2_w3'
+uci add_list mwan3.balanced.use_member='wan6_m1_w3'
+uci add_list mwan3.balanced.use_member='wan6_m2_w3'
+uci set mwan3.balanced.last_resort='default'
+# 新增mwan3规则
+uci set mwan3.https=rule
+uci set mwan3.https.dest_port='443'
+uci set mwan3.https.proto='tcp'
+uci set mwan3.https.sticky='1'
+uci set mwan3.https.use_policy='balanced'
+uci set mwan3.default_rule_v4=rule
+uci set mwan3.default_rule_v4.dest_ip='0.0.0.0/0'
+uci set mwan3.default_rule_v4.proto='all'
+uci set mwan3.default_rule_v4.sticky='0'
+uci set mwan3.default_rule_v4.use_policy='balanced'
+uci set mwan3.default_rule_v6=rule
+uci set mwan3.default_rule_v6.dest_ip='::/0'
+uci set mwan3.default_rule_v6.proto='all'
+uci set mwan3.default_rule_v6.sticky='0'
+uci set mwan3.default_rule_v6.use_policy='balanced'
+uci commit mwan3
+# 删除mwan3 ip6tables规则
+cp /lib/mwan3/mwan3.sh /lib/mwan3/mwan3.sh.orig
+sed -i 's/ip6tables -t manle -w/\/bin\/true/g' /lib/mwan3/mwan3.sh
+
+# 关闭启用并发多拨
+uci set syncdial.config.syncon=0
+uci commit syncdial
+
+# 芝麻开门
+echo 0xDEADBEEF > /etc/config/google_fu_mode
+
+# vim设置
+sed -i 's/mouse=/mouse-=/g' /usr/share/vim/*/defaults.vim
+
+# 删除一些页面
+rm -rf /usr/lib/lua/luci/view/admin_status/index
+rm -f /usr/lib/lua/luci/view/admin_status/index/mwan.htm
+rm -f /usr/lib/lua/luci/view/admin_status/index/upnp.htm
+rm -f /usr/lib/lua/luci/view/admin_status/index/ddns.htm
+rm -f /usr/lib/lua/luci/view/admin_status/index/minidlna.htm
+rm -f /www/luci-static/resources/view/status/include/50_dsl.js
+rm -f /www/luci-static/resources/view/status/include/70_ddns.js
+rm -f /www/luci-static/resources/view/status/include/80_minidlna.js
+rm -f /www/luci-static/resources/view/status/include/80_upnp.js
+
+sed -i 's/\"services\"/\"nas\"/g' /usr/lib/lua/luci/controller/aria2.lua
+sed -i 's/services/nas/g' /usr/lib/lua/luci/view/aria2/overview_status.htm
+sed -i 's/\"services\"/\"nas\"/g' /usr/lib/lua/luci/controller/hd_idle.lua
+sed -i 's/\"services\"/\"nas\"/g' /usr/lib/lua/luci/controller/samba.lua
+sed -i 's/\"services\"/\"nas\"/g' /usr/lib/lua/luci/controller/minidlna.lua
+sed -i 's/\"services\"/\"nas\"/g' /usr/lib/lua/luci/controller/transmission.lua
+sed -i 's/\"services\"/\"nas\"/g' /usr/lib/lua/luci/controller/mjpg-streamer.lua
+sed -i 's/\"services\"/\"nas\"/g' /usr/lib/lua/luci/controller/p910nd.lua
+sed -i 's/\"services\"/\"nas\"/g' /usr/lib/lua/luci/controller/usb_printer.lua
+sed -i 's/\"services\"/\"nas\"/g' /usr/lib/lua/luci/controller/xunlei.lua
+sed -i 's/services/nas/g'  /usr/lib/lua/luci/view/minidlna_status.htm
+
+#禁用某些可能会自启动且用不上的依赖包服务
+/etc/init.d/php7-fastcgi disable 2>/dev/null
+/etc/init.d/php7-fpm disable 2>/dev/null
+/etc/init.d/softethervpnbridge disable 2>/dev/null
+/etc/init.d/softethervpnserver disable 2>/dev/null
+/etc/init.d/softethervpnclient disable 2>/dev/null
+/etc/init.d/haproxy disable 2>/dev/null
+/etc/init.d/kcptun disable 2>/dev/null
+
+ln -sf /sbin/ip /usr/bin/ip
+ln -sf /sbin/poweroff /sbin/shutdown
+
+# 替换源地址
+sed -i 's/http:/https:/g' /etc/opkg/distfeeds.conf
+sed -i "s/# //g" /etc/opkg/distfeeds.conf
+sed -i '/immortalwrt_custom/d' /etc/opkg/distfeeds.conf
+sed -i 's#downloads.immortalwrt.org#mirrors.cloud.tencent.com/lede#g' /etc/opkg/distfeeds.conf
+sed -i '/openwrt_luci/ { s/snapshots/releases\/21.02.2/g; }'  /etc/opkg/distfeeds.conf
+sed -i '/openwrt_packages/ { s/snapshots/releases\/21.02.2/g; }'  /etc/opkg/distfeeds.conf
+
+# WIFI设置
+sed -i '/option disabled/d' /etc/config/wireless
+sed -i '/set wireless.radio${devidx}.disabled/d' /lib/wifi/mac80211.sh
+
+sed -i '/log-facility/d' /etc/dnsmasq.conf
+echo "log-facility=/dev/null" >> /etc/dnsmasq.conf
+
+# uhttpd 设置
+uci add_list uhttpd.main.listen_http='0.0.0.0:86'
+uci add_list uhttpd.main.listen_http='[::]:86'
+uci add_list uhttpd.main.listen_https='0.0.0.0:443'
+uci add_list uhttpd.main.listen_https='[::]:443'
+uci add_list uhttpd.main.listen_https='[::]:83'
+uci set uhttpd.defaults.country='CN'
+uci set uhttpd.defaults.location='HeFei'
+uci set uhttpd.main.rfc1918_filter=0
+uci set uhttpd.main.redirect_https=0
+uci set uhttpd.main.max_connections='200'
+uci set uhttpd.main.max_requests='100'
+uci set uhttpd.defaults.commonname='danxiaonuo'
+uci commit uhttpd
+/etc/init.d/uhttpd restart > /dev/null 2>&1
+
+echo $(uci get uhttpd.main.index_page) | grep -q "cgi-bin/luci" ||
+	uci -q add_list uhttpd.main.index_page='cgi-bin/luci' && commit uhttpd
+
+sed -i 's/cbi.submit\"] = true/cbi.submit\"] = \"1\"/g' /usr/lib/lua/luci/dispatcher.lua
+
+echo 'hsts=0' > /root/.wgetrc
+
+sed -i '/luciname/d' /usr/lib/lua/luci/version.lua
+echo 'luciname    = "LuCI by Uola"' >> /usr/lib/lua/luci/version.lua
+sed -i '/luciversion/d' /usr/lib/lua/luci/version.lua
+echo 'luciversion = "R1.1.1"' >> /usr/lib/lua/luci/version.lua
+
+#SSH相关设置
+sed -i '1,/PermitRootLogin/{s/.*PermitRootLogin.*/PermitRootLogin yes/}' /etc/ssh/sshd_config
+sed -i '1,/GSSAPIAuthentication/{s/.*GSSAPIAuthentication.*/GSSAPIAuthentication no/}' /etc/ssh/sshd_config
+sed -i '1,/UseDNS/{s/.*UseDNS.*/UseDNS no/}' /etc/ssh/sshd_config
+/etc/init.d/sshd restart
+
+# 状态检测脚本
+# sed -i '/exit 0/i\# 状态检测脚本\nbash /sbin/init_status.sh' /etc/rc.local
+# echo -e "# 自动检测LAN口状况\n*/1 * * * * /bin/bash /sbin/net_status.sh" > /etc/crontabs/root && crontab /etc/crontabs/root && /etc/init.d/cron restart
+# ipv6路由自动检测
+echo -e "* * * * * /bin/bash /sbin/ipv6_check_route.sh" >> /etc/crontabs/root && crontab /etc/crontabs/root && /etc/init.d/cron restart
+
+# ipv6自动检测
+chmod 775 /sbin/ipv6_check.sh
+sed -i '/exit 0/i\# ipv6自动检测\nbash /sbin/ipv6_check.sh' /etc/rc.local
+
+# ipv6路由自动检测
+chmod 775 /sbin/ipv6_check_route.sh
+sed -i '/exit 0/i\# ipv6路由自动检测\nbash /sbin/ipv6_check_route.sh' /etc/rc.local
+
+# smartdns自动检测
+chmod 775 /sbin/smartdns.sh
+sed -i '/exit 0/i\# smartdns自动检测\nbash /sbin/smartdns.sh' /etc/rc.local
+
+# 自动检测ipv6路由
+sed -i '/fw3 -q reload/i\/sbin/ipv6_check_route.sh' /etc/hotplug.d/iface/20-firewall
+# sed -i '/fw3 -q reload/a\/etc/init.d/smartdns restart' /etc/hotplug.d/iface/20-firewall
+# sed -i '/fw3 -q reload/a\/etc/init.d/dnsmasq restart' /etc/hotplug.d/iface/20-firewall
+# sed -i '/fw3 -q reload/a\/etc/init.d/firewall restart' /etc/hotplug.d/iface/20-firewall
+# echo "/etc/init.d/firewall restart" >> /etc/hotplug.d/iface/20-firewall
+# echo "/sbin/ipv6_check_route.sh" >> /etc/hotplug.d/iface/20-firewall
+# echo "/etc/init.d/firewall restart" >> /etc/hotplug.d/ntp/25-dnsmasqsec
+
+# 防火墙设置
+sed -i '/exit 0/i\# 防火墙设置\nbash /sbin/firewall.sh' /etc/rc.local
+chmod -R 775 /sbin/*.sh
+/bin/bash /sbin/firewall.sh
+
+# dropbear设置
+sed -i 's#$addr#0.0.0.0#g' /etc/init.d/dropbear
+sed -i '/0.0.0.0/a\                procd_append_param command -p "[::]:$port"' /etc/init.d/dropbear
+
+rm -rf /tmp/luci-modulecache/
+rm -f /tmp/luci-indexcache
+
+exit 0
